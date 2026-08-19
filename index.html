@@ -14,21 +14,6 @@ content="Medix Store - Medicines, surgical items, pet care, water bottles and he
 
 <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
-<!-- =========================================================
-     GOOGLE MAPS API
-========================================================= -->
-
-<script>
-    // Google Maps JavaScript API.
-    // The API loads the Maps and Places libraries, then calls initMap().
-</script>
-
-<script
-    async
-    defer
-    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDNJLoeqe9rJZeYJPu0lTBEr8ZeNyBS-m8&libraries=places&callback=initMap">
-</script>
-
 <style>
 
 /* =========================================================
@@ -195,7 +180,6 @@ nav a:hover {
 ========================================================= */
 
 .hero {
-
     min-height: 650px;
 
     display: flex;
@@ -208,7 +192,6 @@ nav a:hover {
             rgba(0,105,92,0.84),
             rgba(0,61,55,0.87)
         ),
-
         url("https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=2000&q=85");
 
     background-size: cover;
@@ -706,7 +689,7 @@ textarea:focus {
 
 
 /* =========================================================
-   MAP
+   GOOGLE MAP
 ========================================================= */
 
 .map-container {
@@ -719,6 +702,8 @@ textarea:focus {
     margin-top: 15px;
 
     background: #e0f2f1;
+
+    position: relative;
 }
 
 #map {
@@ -732,6 +717,8 @@ textarea:focus {
     color: #607d7a;
 
     font-size: 12px;
+
+    line-height: 1.6;
 }
 
 
@@ -1730,8 +1717,8 @@ type="submit">
 </h3>
 
 <p>
-Search for the delivery address or move the marker
-to the customer's desired location.
+Search for the delivery address, click the map,
+or drag the marker to the customer's desired location.
 </p>
 
 
@@ -1739,6 +1726,7 @@ to the customer's desired location.
 id="mapSearch"
 type="text"
 placeholder="🔎 Search delivery address..."
+autocomplete="off"
 >
 
 
@@ -1750,6 +1738,7 @@ placeholder="🔎 Search delivery address..."
 
 
 <button
+type="button"
 class="btn btn-green"
 style="margin-top:15px"
 onclick="useCurrentLocation()">
@@ -1761,8 +1750,7 @@ onclick="useCurrentLocation()">
 
 <div class="map-status">
 
-The selected location will be included with
-the order information.
+Loading Google Maps...
 
 </div>
 
@@ -2820,27 +2808,43 @@ event.target.reset();
 
 
 /* =========================================================
-   GOOGLE MAP
+   GOOGLE MAPS
 ========================================================= */
 
-let map;
+let map = null;
 
-let marker;
+let marker = null;
 
-let geocoder;
+let geocoder = null;
 
+let autocomplete = null;
+
+
+/* =========================================================
+   INITIALIZE MAP
+========================================================= */
 
 function initMap() {
 
-    // Prevent duplicate initialization.
-    if (map) return;
+console.log(
+"Google Maps API loaded."
+);
 
-    const mapElement = document.getElementById("map");
 
-    if (!mapElement) {
-        console.error("Google Maps: #map element was not found.");
-        return;
-    }
+const mapElement =
+document.getElementById("map");
+
+
+if(!mapElement) {
+
+console.error(
+"Google Maps: #map element was not found."
+);
+
+return;
+
+}
+
 
 const storeLocation = {
 
@@ -2851,20 +2855,35 @@ lng:78.3857
 };
 
 
+try {
+
+
+/* ---------------------------------------------------------
+   CREATE MAP
+--------------------------------------------------------- */
+
 map =
 new google.maps.Map(
-document.getElementById("map"),
+mapElement,
 {
 
 center:storeLocation,
 
-zoom:13,
+zoom:14,
 
-mapTypeControl:false
+mapTypeControl:false,
+
+streetViewControl:false,
+
+fullscreenControl:true
 
 }
 );
 
+
+/* ---------------------------------------------------------
+   CREATE MARKER
+--------------------------------------------------------- */
 
 marker =
 new google.maps.Marker({
@@ -2881,9 +2900,17 @@ title:
 });
 
 
+/* ---------------------------------------------------------
+   GEOCODER
+--------------------------------------------------------- */
+
 geocoder =
 new google.maps.Geocoder();
 
+
+/* ---------------------------------------------------------
+   MARKER DRAG
+--------------------------------------------------------- */
 
 marker.addListener(
 "dragend",
@@ -2895,15 +2922,56 @@ getAddressFromMarker();
 );
 
 
+/* ---------------------------------------------------------
+   MAP CLICK
+--------------------------------------------------------- */
+
+map.addListener(
+"click",
+function(event) {
+
+marker.setPosition(
+event.latLng
+);
+
+getAddressFromMarker();
+
+}
+);
+
+
+/* ---------------------------------------------------------
+   SEARCH BOX
+--------------------------------------------------------- */
+
 const searchInput =
 document.getElementById(
 "mapSearch"
 );
 
 
-const autocomplete =
+if(
+searchInput &&
+google.maps.places
+) {
+
+
+autocomplete =
 new google.maps.places.Autocomplete(
-searchInput
+searchInput,
+{
+
+fields:[
+"formatted_address",
+"geometry",
+"name"
+],
+
+componentRestrictions:{
+country:"in"
+}
+
+}
 );
 
 
@@ -2917,14 +2985,25 @@ autocomplete.addListener(
 "place_changed",
 function() {
 
+
 const place =
 autocomplete.getPlace();
 
 
-if(!place.geometry) {
+console.log(
+"Selected place:",
+place
+);
+
+
+if(
+!place ||
+!place.geometry ||
+!place.geometry.location
+) {
 
 showToast(
-"Please select an address from the suggestions."
+"Please select an address from the Google suggestions."
 );
 
 return;
@@ -2932,64 +3011,187 @@ return;
 }
 
 
-map.setCenter(
+/* Move map */
+
+map.panTo(
 place.geometry.location
 );
 
+map.setZoom(17);
 
-map.setZoom(16);
 
+/* Move marker */
 
 marker.setPosition(
 place.geometry.location
 );
 
 
+/* Save address */
+
 document.getElementById(
 "selectedLocation"
 ).value =
 place.formatted_address ||
+place.name ||
 searchInput.value;
 
+
+showToast(
+"Delivery location selected."
+);
+
 }
+);
+
+
+} else {
+
+
+console.error(
+"Google Places library was not loaded."
 );
 
 }
 
 
+/* ---------------------------------------------------------
+   MAP READY MESSAGE
+--------------------------------------------------------- */
+
+const status =
+document.querySelector(
+".map-status"
+);
+
+
+if(status) {
+
+status.textContent =
+"Search an address, click the map, or drag the marker to choose the delivery location.";
+
+}
+
+
+console.log(
+"Google Maps initialized successfully."
+);
+
+
+}
+
+catch(error) {
+
+console.error(
+"Google Maps initialization error:",
+error
+);
+
+
+showMapError(
+"Google Maps could not be initialized."
+);
+
+}
+
+}
+
+
 /* =========================================================
-   MAP ADDRESS
+   GET ADDRESS FROM MARKER
 ========================================================= */
 
 function getAddressFromMarker() {
 
-if(!geocoder || !marker) return;
+
+if(
+!map ||
+!marker ||
+!geocoder
+) {
+
+showToast(
+"Google Maps is not ready yet."
+);
+
+return;
+
+}
 
 
 const position =
 marker.getPosition();
 
 
+if(!position) {
+
+return;
+
+}
+
+
 geocoder.geocode(
+
 {
 location:position
 },
 
-function(results,status) {
+function(
+results,
+status
+) {
+
+
+console.log(
+"Geocoder status:",
+status
+);
+
 
 if(
 status === "OK" &&
-results[0]
+results &&
+results.length > 0
 ) {
+
+
+const address =
+results[0].formatted_address;
+
 
 document.getElementById(
 "selectedLocation"
 ).value =
-results[0].formatted_address;
+address;
+
+
+showToast(
+"Delivery location updated."
+);
+
+
+}
+
+else {
+
+
+document.getElementById(
+"selectedLocation"
+).value =
+
+position.lat().toFixed(6) +
+", " +
+position.lng().toFixed(6);
+
+
+showToast(
+"Location selected, but address could not be found."
+);
 
 }
 
 }
+
 );
 
 }
@@ -3001,10 +3203,14 @@ results[0].formatted_address;
 
 function useCurrentLocation() {
 
-if(!navigator.geolocation) {
+
+if(
+!map ||
+!marker
+) {
 
 showToast(
-"Location services are not supported."
+"Google Maps is still loading. Please wait a moment."
 );
 
 return;
@@ -3012,9 +3218,28 @@ return;
 }
 
 
+if(
+!navigator.geolocation
+) {
+
+showToast(
+"Your browser does not support location services."
+);
+
+return;
+
+}
+
+
+showToast(
+"Getting your current location..."
+);
+
+
 navigator.geolocation.getCurrentPosition(
 
 function(position) {
+
 
 const location = {
 
@@ -3027,27 +3252,142 @@ position.coords.longitude
 };
 
 
-map.setCenter(location);
+console.log(
+"Current location:",
+location
+);
 
-map.setZoom(16);
 
-marker.setPosition(location);
+/* Move map */
+
+map.setCenter(
+location
+);
+
+map.setZoom(17);
+
+
+/* Move marker */
+
+marker.setPosition(
+location
+);
+
+
+/* Get address */
 
 getAddressFromMarker();
 
+
 },
 
-function() {
+function(error) {
+
+
+console.error(
+"Geolocation error:",
+error
+);
+
+
+let message =
+"Unable to access your location.";
+
+
+if(error.code === 1) {
+
+message =
+"Location permission was denied. Please allow location access in your browser.";
+
+}
+
+
+if(error.code === 2) {
+
+message =
+"Your location could not be determined.";
+
+}
+
+
+if(error.code === 3) {
+
+message =
+"Location request timed out.";
+
+}
+
 
 showToast(
-"Unable to access your location."
+message
 );
+
+},
+
+{
+
+enableHighAccuracy:true,
+
+timeout:15000,
+
+maximumAge:0
 
 }
 
 );
 
 }
+
+
+/* =========================================================
+   MAP ERROR
+========================================================= */
+
+function showMapError(message) {
+
+
+const mapStatus =
+document.querySelector(
+".map-status"
+);
+
+
+if(mapStatus) {
+
+mapStatus.innerHTML =
+"<strong>" +
+escapeHTML(message) +
+"</strong><br>" +
+"Please check your Google Maps API key, billing, API restrictions and website referrer settings.";
+
+}
+
+
+showToast(
+message
+);
+
+}
+
+
+/* =========================================================
+   GOOGLE MAP AUTH FAILURE
+========================================================= */
+
+window.gm_authFailure =
+function() {
+
+
+console.error(
+"Google Maps authentication failed."
+);
+
+
+showMapError(
+"Google Maps authentication failed."
+);
+
+};
 
 
 /* =========================================================
@@ -3178,13 +3518,6 @@ showToast(
 
 }
 
-
-/*
-   WhatsApp order
-
-   The customer can confirm the order
-   directly with Medix Store.
-*/
 
 const whatsappNumber =
 "919059056219";
@@ -3335,12 +3668,13 @@ return map[character];
 
 
 /* =========================================================
-   INITIALIZE
+   INITIALIZE WEBSITE
 ========================================================= */
 
 document.addEventListener(
 "DOMContentLoaded",
 function() {
+
 
 document.getElementById(
 "year"
@@ -3350,32 +3684,33 @@ new Date().getFullYear();
 
 displayProducts();
 
+
 updateCart();
 
 
-// Google Maps is initialized by callback=initMap after the API loads.
+console.log(
+"Medix Store website initialized."
+);
 
 }
 );
 
 </script>
 
-<script>
-window.gm_authFailure = function () {
-    const mapStatus = document.querySelector(".map-status");
 
-    if (mapStatus) {
-        mapStatus.innerHTML =
-            "Google Maps could not authenticate the API key. " +
-            "Check billing, enabled APIs, API restrictions, and allowed website referrers.";
-    }
+<!-- =========================================================
+     GOOGLE MAPS JAVASCRIPT API
 
-    console.error(
-        "Google Maps authentication failed. Check the API key, billing, " +
-        "API restrictions, and website/application restrictions in Google Cloud."
-    );
-};
+     IMPORTANT:
+     This is intentionally placed AFTER the main JavaScript
+     so initMap() already exists when Google calls it.
+========================================================= -->
+
+<script
+    async
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDNJLoeqe9rJZeYJPu0lTBEr8ZeNyBS-m8&loading=async&libraries=places&callback=initMap">
 </script>
+
 
 </body>
 </html>
